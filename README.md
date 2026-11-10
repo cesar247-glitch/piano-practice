@@ -32,7 +32,7 @@ codemagic.yaml              ios-tests (unsigned) and ios-testflight (signed → 
 scripts/                    pinned tooling (tooling.env), CI script, bundle-ID check
 ```
 
-**Bundle ID:** `com.cesarperez.pianopractice`. It appears in `project.yml` and twice in `codemagic.yaml`. If you change it, change all three places; `scripts/check-bundle-id.sh` fails CI if they ever differ.
+**Bundle ID:** `com.cesarperez.pianopractice` (registered). **App Store Connect app:** "Piano Practice: Mic Trainer", Apple ID `6833136786` (the plain name was taken; the home-screen name is still *Piano Practice*). **TestFlight:** internal group "Day 1" with automatic distribution, tester Cesar Perez. It appears in `project.yml` and twice in `codemagic.yaml`. If you change it, change all three places; `scripts/check-bundle-id.sh` fails CI if they ever differ.
 
 **Pinned tooling:** XcodeGen 2.45.4 and Xcode 26.5, both set in `scripts/tooling.env`. Apple requires Xcode 26 or later for App Store Connect uploads.
 

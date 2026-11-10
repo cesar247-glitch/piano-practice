@@ -61,7 +61,7 @@ workflows:
         bundle_identifier: com.cesarperez.pianopractice
       vars:
         <<: *shared_vars
-        APP_STORE_APPLE_ID: "0000000000" # ← replace with the app record's Apple ID
+        APP_STORE_APPLE_ID: "6833136786" # App Store Connect app "Piano Practice: Mic Trainer"
     # Manual start only (Start new build → ios-testflight). Add `triggering` later if wanted.
     scripts:
       - *generate_project
