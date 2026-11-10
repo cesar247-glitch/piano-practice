@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "lessons": [
+    {
+      "id": "key-check",
+      "title": "Key Check",
+      "subtitle": "C4–G4 · wrong notes, repeats, a long note",
+      "tempo": 60,
+      "events": [
+        { "type": "note", "midi": 60, "beats": 1 },
+        { "type": "note", "midi": 62, "beats": 1 },
+        { "type": "note", "midi": 64, "beats": 1 },
+        { "type": "note", "midi": 65, "beats": 1 },
+        { "type": "note", "midi": 67, "beats": 1 },
+        { "type": "note", "midi": 64, "beats": 0.5 },
+        { "type": "note", "midi": 64, "beats": 0.5 },
+        { "type": "note", "midi": 60, "beats": 2 }
+      ]
+    },
+    {
+      "id": "ode-to-joy",
+      "title": "Ode to Joy",
+      "subtitle": "Beethoven · beginner melody excerpt",
+      "tempo": 80,
+      "events": [
+        { "type": "note", "midi": 64, "beats": 1 },
+        { "type": "note", "midi": 64, "beats": 1 },
+        { "type": "note", "midi": 65, "beats": 1 },
+        { "type": "note", "midi": 67, "beats": 1 },
+
+        { "type": "note", "midi": 67, "beats": 1 },
+        { "type": "note", "midi": 65, "beats": 1 },
+        { "type": "note", "midi": 64, "beats": 1 },
+        { "type": "note", "midi": 62, "beats": 1 },
+
+        { "type": "note", "midi": 60, "beats": 1 },
+        { "type": "note", "midi": 60, "beats": 1 },
+        { "type": "note", "midi": 62, "beats": 1 },
+        { "type": "note", "midi": 64, "beats": 1 },
+
+        { "type": "note", "midi": 64, "beats": 1.5 },
+        { "type": "note", "midi": 62, "beats": 0.5 },
+        { "type": "note", "midi": 62, "beats": 2 }
+      ]
+    }
+  ]
+}

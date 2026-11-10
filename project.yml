@@ -1,0 +1,94 @@
+# XcodeGen spec — the portable source of truth for the Xcode project.
+# PianoPractice.xcodeproj is generated (on macOS CI or a Mac) and is not committed.
+#   xcodegen generate
+name: PianoPractice
+
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  xcodeVersion: "26.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    # Build 1 for the first upload. Codemagic sets the next number from TestFlight on each build.
+    CURRENT_PROJECT_VERSION: "1"
+    VERSIONING_SYSTEM: apple-generic
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  PianoCore:
+    path: PianoCore
+
+targets:
+  PianoPractice:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: PianoPractice
+    dependencies:
+      - package: PianoCore
+    info:
+      path: PianoPractice/Info.plist
+      properties:
+        CFBundleDisplayName: Piano Practice
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        NSMicrophoneUsageDescription: Piano Practice listens to your acoustic piano to check which key you played. Audio is analyzed on your iPhone and is never recorded or sent anywhere.
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: false
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        # ── Bundle ID: change it here AND in codemagic.yaml (scripts/check-bundle-id.sh enforces a match).
+        PRODUCT_BUNDLE_IDENTIFIER: com.cesarperez.pianopractice
+        PRODUCT_NAME: PianoPractice
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES
+        SWIFT_STRICT_CONCURRENCY: minimal
+        SWIFT_EMIT_LOC_STRINGS: NO
+
+  PianoPracticeTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: PianoPracticeTests
+    dependencies:
+      - target: PianoPractice
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cesarperez.pianopractice.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_STRICT_CONCURRENCY: minimal
+
+schemes:
+  PianoPractice:
+    build:
+      targets:
+        PianoPractice: all
+        PianoPracticeTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - PianoPracticeTests
+    archive:
+      config: Release

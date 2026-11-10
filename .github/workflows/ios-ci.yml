@@ -1,0 +1,48 @@
+# macOS CI: unsigned simulator build + all tests. No secrets, no signing.
+# Signed TestFlight builds run on Codemagic (codemagic.yaml), so a red check here is always
+# a code/test problem, never a certificate problem.
+name: iOS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Simulator build & tests
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check bundle ID consistency
+        run: scripts/check-bundle-id.sh
+
+      - name: Select pinned Xcode
+        run: scripts/select-xcode.sh
+
+      - name: Cache XcodeGen
+        uses: actions/cache@v4
+        with:
+          path: .tools
+          key: tools-${{ runner.os }}-${{ hashFiles('scripts/tooling.env') }}
+
+      - name: Core tests, project generation, simulator build, app tests
+        run: scripts/ci-test.sh
+
+      - name: Upload logs and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-results
+          path: |
+            build/*.log
+            build/TestResults.xcresult
+          if-no-files-found: ignore
+          retention-days: 14

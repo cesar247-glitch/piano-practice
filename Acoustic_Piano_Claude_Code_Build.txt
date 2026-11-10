@@ -1,0 +1,71 @@
+# Acoustic piano trainer
+## Claude Code build brief for the first iPhone test
+
+Download this file into a new project folder, open that folder in Claude Code, and paste:
+
+> Read Acoustic_Piano_Claude_Code_Build.txt and implement the Day 1 iOS app in this repo. Follow the build order, run the checks this environment supports, and leave me with a Mac CI build and the steps to install it on my iPhone 14. Ask me only for missing signing identifiers or credentials when they actually block the next step.
+
+### What we're building
+
+Build a native SwiftUI app that listens to a real acoustic piano through the iPhone microphone. It shows the next key, waits for a fresh strike of the right note, and progresses through a melody. Show the player how long each note lasts with a falling bar and a hold cue. The first meaningful result is finishing a song on an iPhone 14 with an acoustic piano and no cable, pedal, network, or account.
+
+The public Artie ad in the reference recording shows a phone in landscape on an upright piano, a selected Moonlight Sonata lesson, hand options, and colored notes falling toward an on-screen keyboard. The practice screen also shows speed and loop controls. Treat these as observations of public behavior. Build the interface, audio pipeline, assets, and exercises independently. Use a provisional display name, Piano Practice. Confirm a final name before release.
+
+### Deliverables and build order
+
+1. **Project and deployability.** Create an iOS 17+ SwiftUI Xcode project with a shared app scheme and test target. Target the iPhone 14. Inspect the repo first and reuse a working native iOS build and signing setup if one exists. On Windows, use XcodeGen if there is no project and generate it on macOS CI. Keep a portable project specification, lock or pin tooling, and share the scheme. Set a configurable bundle ID and use the same ID everywhere. Use build 1 for the initial upload and an incrementing build number thereafter. Leave signing secrets in the CI provider's secret store.
+2. **Mic Check.** Make a working diagnostic screen first. When I tap Start Listening, ask for mic permission, then display live input level, detected note including octave, Hz, cents, confidence, and a visible strike indicator. Provide Stop, a useful denied-permission state with Settings, and actionable input failure states. Display target, detected note, and last reason for a rejected match in the practice debug panel. Add a quiet-room noise calibration option and a fixed tuning-offset setting or explicit reference-note calibration. If calibrating tuning, tell me to play A4 and only accept a confident estimate close to A4. Do not learn tuning from arbitrary notes during a lesson.
+3. **Practice.** Implement one landscape-first practice screen with a five- or nine-white-key window centered near middle C, correctly layered black keys, an obvious strike line, a label on the target key, and a visible progress count. Add the current and upcoming bars aligned to key centers, with bar length representing score duration. Let bars move toward the line, freeze on the target when waiting, and advance the lesson clock after the match. Use one geometry model for the keyboard and bars. Add Restart, optional section looping, and 60%/80%/100% tempo if the basic acoustic loop is already working. Keep the target and progress usable in portrait as a fallback. Add an end-of-lesson screen with Replay.
+4. **Package for the phone.** Add one macOS CI workflow that builds the simulator and runs tests. Use the existing CodeMagic setup for signed builds if available. For a new app, prepare a native iOS codemagic.yaml using the documented App Store Connect integration and distribution signing. Leave a short README showing how to create or select the app record, register its bundle ID, configure the integration/profile, run the workflow, assign the processed build to an internal TestFlight group, and install it. Do not submit a public App Store release. Keep macOS test build and signing failures separately diagnosable.
+
+### Core interaction
+
+- **Wait for the right note.** The target settles at the strike line. Accept only a confident match for the expected MIDI note, including octave, following a fresh onset. An incorrect note may show the detected pitch but leaves the target in place. Check pitch independently of the expected note. Never coerce the detector into returning the target.
+- **Show how long to hold.** When a matching strike arrives, fill a visual meter for the score's target duration. In this build the meter is a cue driven by a monotonic clock. Give the player the duration before moving to the next target, but keep the wait state for the next strike distinct from that timer. Do not display a measured key-release time, a duration accuracy grade, or a “held correctly” message. The microphone can hear a decaying piano tone after a key is lifted, especially with a sustain pedal.
+- **Handle repeats.** Every strike has a unique onset event. Consume each onset at most once. Require a new energy attack or a reliable rearm after a drop before accepting the next note, even if it has the same pitch. Avoid a long blanket debounce. Keep raw pitch estimates separate from accepted note events.
+- **Touch fallback.** A clearly labeled Touch Demo uses on-screen keys to exercise the same lesson logic and timing. It is a separate mode with no microphone and no pretending that tapping tested acoustic input.
+- **Keep the first build silent while listening.** No guide playback or audible metronome. Use visual cues so the phone's speaker cannot trigger the detector.
+
+### Audio implementation
+
+- Use AVAudioApplication.requestRecordPermission on iOS 17+, with NSMicrophoneUsageDescription. Configure AVAudioSession with .record and .measurement for the listening session. Use AVAudioEngine and an input tap compatible with the chosen deployment target. Use the input's actual stream format and sample rate. Guard an unavailable input or zero channels before installing the tap.
+- Keep the tap lightweight. Copy the actual frame count into owned, bounded buffering. Process mono analysis windows on a serial worker, with the view model on the main actor. Do not retain framework-owned PCM pointers past their callback, enqueue unlimited work, or do UI updates from the tap. Read actual buffer lengths, independent of requested tap size.
+- Start with a monophonic YIN estimator using the normalized difference function, first credible minimum, and interpolation. Use ~2,048 samples at 44.1/48 kHz, with ~512-sample hops. Tune with tests. Start with a detector search range of about 120–900 Hz so the C3 and C5 rejection checks are in range and the estimator is independent of the C4–G4 lesson targets. Check 44.1 and 48 kHz explicitly. MIDI pitch is round(69 + 12 × log2(f / tuningA4)). Return the measured pitch, cents, and confidence, and gate uncertain estimates, weak input, and unstable transitions. Start around ±40 cents from the nearest MIDI pitch after calibration and adjust based on real measurements. Use a simple onset detector with a short energy envelope, adaptive floor, and hysteresis. Associate a pitch with an onset only after it stabilizes within a bounded window.
+- Add a clear Stop path. Remove the tap and release the session when leaving practice, backgrounding, or switching to Touch Demo. Handle audio interruptions and route changes safely, invalidate queued results from the old session, and surface a restart action. Avoid duplicate taps across repeated Start/Stop. Process audio locally in memory. No recording files, analytics, cloud services, AI keys, MIDI hardware, or network dependency.
+
+### Starter lessons
+
+Store a short bundled JSON lesson library. Each lesson has an ID, title, tempo, and an ordered list of events. Each note event has MIDI pitch and duration in beats. Derive start beats cumulatively. Keep the first release monophonic, with support for rests only if implemented through both the score model and playback logic.
+
+- **Key Check**, 60 BPM. C4, D4, E4, F4, G4, E4, E4, C4. Use a half beat for each of the two consecutive E4s and two beats for the last C4. Use one beat for the other notes. This covers wrong notes, repeated strikes, and a visibly longer note.
+- **Ode to Joy**, 80 BPM. An independently entered beginner excerpt of Beethoven's melody. MIDI pitches by phrase: `64 64 65 67 | 67 65 64 62 | 60 60 62 64 | 64 62 62`. Use 1 beat per note through the first three bars and 1.5, 0.5, 2 beats for the final three. Use the melody only. Keep branded assets and source arrangements out of the project.
+
+### Verification
+
+**Automate on CI**
+
+- Use synthetic signals at 44.1/48 kHz. Verify clean tones, soft and decaying harmonic-rich notes, silence, noise rejection, and wrong-octave rejection in the lesson matcher. Include an attack pair at the same pitch and a single decaying attack. Confirm MIDI numbering and tolerance boundaries.
+- Test that silence and the wrong MIDI note leave the score waiting. Verify that two equal consecutive pitches require distinct onset IDs. Test short and long cues, reset while listening, and completion. Inject a controllable clock and note-event stream for state tests.
+- Verify simulator compilation and Touch Demo. A simulator pass only validates the wiring and game flow.
+
+**On my iPhone 14 and acoustic piano**
+
+1. Put the phone on the piano stand with the microphone openings clear. Keep the room quiet, leave the sustain pedal up, and open Mic Check. Find middle C, the white key immediately left of a pair of black keys near the keyboard's center. Verify the detector reads C4, D4, E4, F4, and G4.
+2. Play five clean strikes on each of those keys, mixing normal and soft playing. Record which notes show the wrong name or octave, or require multiple tries. Aim for at least 23/25 clean strikes, with visible feedback in roughly 250 ms or less on normal strikes. These are acceptance targets to measure on-device.
+3. In Key Check, intentionally play a neighboring key five times while the app waits for C4. Try C3 and C5 as well. No wrong note should advance the target. Wait in silence for five seconds and confirm the app stays put.
+4. When you reach the repeated E4s, strike once and let the sound decay. The next E4 should still wait. Strike E4 again after the next target is armed and verify it advances once. Repeat a few times. Use the final C4 to check the two-beat cue.
+5. Finish Ode to Joy twice, once softly. Stop and restart listening. If it misses, note the expected/detected pitches, volume level, confidence, and whether the previous tone was still ringing. If mic permission is denied, verify recovery through Settings.
+
+### Release scope
+
+Ship tonight's internal build with Mic Check, Touch Demo, single-note wait practice, two lessons, and visual duration guidance. Save timed rhythm scoring for after the microphone passes on a real piano. Add two-hand and chord recognition, sustain-aware behavior, and song import in later milestones. Start the launch catalog with original exercises and independently prepared public-domain material. Track composition, arrangement, and recording provenance before adding any commercial catalog. Choose a final app name and pricing after the core interaction works.
+
+### References
+
+- [Artie on the App Store](https://apps.apple.com/us/app/artie-learn-piano-with-ai/id6746756746)
+- [flowkey and Wait Mode](https://www.flowkey.com/en)
+- [Apple microphone permission](https://developer.apple.com/documentation/avfaudio/avaudioapplication)
+- [Apple audio measurement mode](https://developer.apple.com/documentation/avfaudio/avaudiosession/mode-swift.struct/measurement)
+- [YIN pitch estimation paper](https://pubmed.ncbi.nlm.nih.gov/12002874/)
+- [Codemagic native iOS workflow](https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/)
+- [Apple TestFlight internal groups](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers)

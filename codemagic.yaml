@@ -1,0 +1,107 @@
+# Codemagic native iOS workflows.
+#
+#   ios-tests       Unsigned simulator build + tests (same script as GitHub Actions).
+#   ios-testflight  Signed App Store build → upload to App Store Connect → internal TestFlight.
+#
+# Signing and test failures stay separately diagnosable: ios-testflight runs signing in its
+# own named steps, and ios-tests needs no credentials at all.
+#
+# Before the first run (see README "Ship to your iPhone"):
+#   1. Codemagic → Team settings → Integrations → Developer Portal: add an App Store Connect
+#      API key and name it exactly as in `integrations.app_store_connect` below.
+#   2. Replace APP_STORE_APPLE_ID with the app record's Apple ID (App Store Connect → App
+#      Information → Apple ID; a number like 6740000000).
+#   3. Keep the bundle ID identical to project.yml (scripts/check-bundle-id.sh enforces this).
+# No secrets live in this file; Codemagic holds the API key and signing identities.
+
+definitions:
+  vars: &shared_vars
+    XCODE_PROJECT: PianoPractice.xcodeproj
+    XCODE_SCHEME: PianoPractice
+    BUNDLE_ID: "com.cesarperez.pianopractice"
+
+  scripts:
+    - &generate_project
+      name: Install pinned XcodeGen and generate the project
+      script: |
+        scripts/check-bundle-id.sh
+        scripts/install-xcodegen.sh
+        .tools/xcodegen/bin/xcodegen generate
+
+workflows:
+  ios-tests:
+    name: iOS tests (unsigned)
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      xcode: 26.5
+      vars:
+        <<: *shared_vars
+    triggering:
+      events: [push, pull_request]
+      branch_patterns:
+        - pattern: "*"
+    scripts:
+      - name: Core tests, simulator build, app tests
+        script: scripts/ci-test.sh
+    artifacts:
+      - build/*.log
+      - build/TestResults.xcresult
+
+  ios-testflight:
+    name: iOS TestFlight (internal)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: PianoPractice ASC Key
+    environment:
+      xcode: 26.5
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.cesarperez.pianopractice
+      vars:
+        <<: *shared_vars
+        APP_STORE_APPLE_ID: "0000000000" # ← replace with the app record's Apple ID
+    # Manual start only (Start new build → ios-testflight). Add `triggering` later if wanted.
+    scripts:
+      - *generate_project
+
+      - name: "Signing 1/2: apply App Store profile to the project"
+        script: |
+          # Internal TestFlight only: the build can't be sent to external testers or the App Store.
+          xcode-project use-profiles --custom-export-options='{"testFlightInternalTestingOnly": true}'
+
+      - name: "Signing 2/2: verify a distribution identity is installed"
+        script: |
+          security find-identity -v -p codesigning | tee /tmp/identities.txt
+          grep -q "Apple Distribution" /tmp/identities.txt || {
+            echo "No Apple Distribution certificate. Check the App Store Connect integration and ios_signing."; exit 1; }
+
+      - name: Set build number (1 for the first upload, then latest TestFlight + 1)
+        script: |
+          if [ "$APP_STORE_APPLE_ID" = "0000000000" ]; then
+            echo "Set APP_STORE_APPLE_ID in codemagic.yaml first."; exit 1
+          fi
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          case "$LATEST" in ''|*[!0-9]*) LATEST=0 ;; esac
+          NEXT=$((LATEST + 1))
+          echo "Build number: $NEXT"
+          agvtool new-version -all "$NEXT"
+
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        # No beta review, no external testers, no App Store submission.
+        submit_to_testflight: false
+        submit_to_app_store: false
