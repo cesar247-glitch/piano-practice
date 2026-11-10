@@ -1,0 +1,149 @@
+# Signed App Store build → upload to App Store Connect → internal TestFlight ("Day 1" group,
+# automatic distribution). Free on GitHub-hosted macOS runners because this repo is public.
+#
+# Signing is fully cloud-managed: Xcode uses the App Store Connect API key to create/fetch the
+# distribution certificate and profile, so no .p12 or provisioning profile is stored anywhere.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   ASC_KEY_ID       App Store Connect API key ID (10 characters)
+#   ASC_ISSUER_ID    Issuer ID shown above the keys list (UUID)
+#   ASC_KEY_P8       Full contents of AuthKey_XXXXXXXXXX.p8, including the BEGIN/END lines
+# The key must have the Admin role (needed for cloud-managed distribution certificates).
+#
+# Build number = this workflow's run number: 1 for the first upload, then 2, 3, …
+name: TestFlight
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+env:
+  TEAM_ID: X263DP329Z
+
+jobs:
+  tests:
+    name: Tests (unsigned)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-bundle-id.sh
+      - run: scripts/select-xcode.sh
+      - name: Core tests, simulator build, app tests
+        run: scripts/ci-test.sh
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: build/*.log
+          if-no-files-found: ignore
+
+  testflight:
+    name: Archive, sign & upload
+    needs: tests
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check secrets are present
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=0
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            if [ -z "${!v}" ]; then echo "::error::Missing repository secret $v"; missing=1; fi
+          done
+          exit $missing
+
+      - run: scripts/select-xcode.sh
+
+      - name: Generate project
+        run: |
+          scripts/install-xcodegen.sh
+          .tools/xcodegen/bin/xcodegen generate
+
+      - name: "Signing 1/2: install App Store Connect API key"
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p "$HOME/private_keys"
+          KEY="$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          chmod 600 "$KEY"
+          grep -q "BEGIN PRIVATE KEY" "$KEY" || { echo "::error::ASC_KEY_P8 doesn't look like a .p8 key"; exit 1; }
+          echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+
+      - name: "Signing 2/2: archive with cloud-managed signing"
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          mkdir -p build
+          set -o pipefail
+          xcodebuild archive \
+            -project PianoPractice.xcodeproj -scheme PianoPractice -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/PianoPractice.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            > build/archive.log 2>&1 || { tail -120 build/archive.log; exit 1; }
+          grep -E "ARCHIVE SUCCEEDED" build/archive.log
+          echo "Build number: ${{ github.run_number }}"
+
+      - name: Upload to App Store Connect (internal TestFlight only)
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          cat > build/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>testFlightInternalTestingOnly</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath build/PianoPractice.xcarchive \
+            -exportOptionsPlist build/ExportOptions.plist \
+            -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            > build/upload.log 2>&1 || { tail -120 build/upload.log; exit 1; }
+          grep -E "EXPORT SUCCEEDED|Upload succeeded|Uploaded" build/upload.log || tail -40 build/upload.log
+          echo "Uploaded build ${{ github.run_number }}. Apple processing takes ~5–30 min; the Day 1 group gets it automatically."
+
+      - name: Remove API key
+        if: always()
+        run: rm -rf "$HOME/private_keys"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-logs
+          path: build/*.log
+          if-no-files-found: ignore
+          retention-days: 14

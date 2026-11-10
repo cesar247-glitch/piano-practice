@@ -53,7 +53,20 @@ On a Mac: `brew install xcodegen && xcodegen generate && open PianoPractice.xcod
 
 ---
 
-## Ship to your iPhone 14 (internal TestFlight)
+## Free TestFlight builds with GitHub Actions (public repo)
+
+The repo is public, so GitHub's macOS runners cost nothing. `.github/workflows/testflight.yml` runs the tests, then archives with **cloud-managed signing** (no certificates or profiles to manage) and uploads to App Store Connect as an internal-only build.
+
+1. App Store Connect → Users and Access → Integrations → App Store Connect API → **Team Keys** → generate a key with the **Admin** role, then download the `.p8`.
+2. GitHub → this repo → Settings → Secrets and variables → Actions → add three repository secrets:
+   - `ASC_KEY_ID`: the key's ID
+   - `ASC_ISSUER_ID`: the Issuer ID above the key list
+   - `ASC_KEY_P8`: the whole `.p8` file contents
+3. Actions → **TestFlight** → Run workflow. The build number is the run number (1, 2, 3…). The "Day 1" TestFlight group gets each build automatically after Apple processes it.
+
+Codemagic (below) remains an alternative once its minutes are available.
+
+## Ship to your iPhone 14 (internal TestFlight) — Codemagic alternative
 
 You do this once. Nothing is submitted to the public App Store.
 
